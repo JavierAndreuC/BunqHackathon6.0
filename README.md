@@ -1,46 +1,59 @@
-# Crypto Payment Simulator
+# Crypto Payment Simulator with Bunq Integration
 
-A proof-of-concept application that demonstrates how users can pay with cryptocurrencies (BTC/ETH) by converting them to xEUR through Bunq.
+A demonstration of how crypto payments can be processed through Bunq by converting cryptocurrencies to a stablecoin (xEUR) for transactions.
+
+## Project Structure
+
+```
+.
+├── backend/                 # Backend components
+│   ├── __init__.py
+│   ├── wallet.py           # Crypto wallet implementation
+│   └── bunq_api.py         # Bunq API interface
+├── frontend/               # Frontend components
+│   ├── __init__.py
+│   └── app.py             # Streamlit UI application
+├── requirements.txt        # Python dependencies
+└── README.md              # This file
+```
 
 ## Features
 
-- Convert BTC/ETH to xEUR for payments
+- Convert BTC/ETH to xEUR (stablecoin)
+- Make payments using converted xEUR
 - Track transaction history
-- View spending trends
-- Simple and intuitive user interface
-- Integration with Bunq API
+- Visualize spending trends
+- Manage crypto and fiat balances
 
 ## Setup
 
 1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Set up your Bunq API credentials:
-   - Create a `.env` file in the project root
-   - Add your Bunq API key:
-   ```
-   BUNQ_API_KEY=your_api_key_here
+   ```bash
+   pip install -r requirements.txt
    ```
 
-3. Run the application:
-```bash
-streamlit run app.py
-```
+2. Run the Streamlit app:
+   ```bash
+   cd frontend
+   streamlit run app.py
+   ```
 
-## Usage
+## How It Works
 
-1. Click "Initialize System" to set up the Bunq connection and create a test account
-2. View your crypto and xEUR balances
-3. Select a crypto type (BTC/ETH) and enter the amount in EUR
-4. Click "Convert and Pay" to make a payment
-5. View transaction history and spending trends
-6. Use "Reset Balances" to restore default wallet values
+1. User selects crypto (BTC/ETH) and amount to spend
+2. System converts crypto to xEUR at current rates
+3. xEUR is used to make the payment through Bunq
+4. Payment is sent to merchant's IBAN
+5. Transaction history shows the complete flow
+
+## Development
+
+- Backend team can work on `backend/` directory
+- Frontend team can work on `frontend/` directory
+- Both teams can work simultaneously without conflicts
 
 ## Notes
 
-- This is a proof-of-concept implementation
-- Uses mock conversion rates for BTC and ETH
-- Transactions are stored locally in JSON format
-- Requires a valid Bunq API key for testing 
+- Uses Bunq sandbox environment for testing
+- Mock conversion rates for demonstration
+- Real implementation would integrate with crypto exchanges 
