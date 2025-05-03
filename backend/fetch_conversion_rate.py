@@ -3,7 +3,7 @@ import requests
 
 import requests, json
 
-API_KEY = 'f2bc3721-aa8b-415f-9617-0a248e630522'
+API_KEY = os.getenv('LIVE_COIN_WATCH_API_KEY')
 URL = "https://api.livecoinwatch.com/coins/single"
 HEADERS = {
     "content-type": "application/json",
