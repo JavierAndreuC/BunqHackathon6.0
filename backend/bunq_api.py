@@ -1,4 +1,5 @@
 import time
+import os
 from bunq.sdk.context.api_context import ApiContext
 from bunq.sdk.context.bunq_context import BunqContext
 from bunq import ApiEnvironmentType
