@@ -58,7 +58,7 @@ class CryptoWallet:
             json.dump(data, f, indent=2)
 
     def convert_crypto_to_xeur(self, crypto_type: str, amount_in_eur: float) -> bool:
-        """Simulate converting crypto to xEUR"""
+        """Convert crypto to xEUR"""
         # Mock conversion rates
         rates = {
             'BTC': 40000,  # 1 BTC = 40,000 EUR
@@ -70,10 +70,42 @@ class CryptoWallet:
         if crypto_type == 'BTC' and self.btc_balance >= crypto_amount:
             self.btc_balance -= crypto_amount
             self.xeur_balance += amount_in_eur
+            # Add conversion transaction
+            self.add_transaction(
+                crypto_type=crypto_type,
+                crypto_amount=crypto_amount,
+                eur_amount=amount_in_eur,
+                recipient="Internal Conversion",
+                status="CRYPTO_TO_xEUR"
+            )
             return True
         elif crypto_type == 'ETH' and self.eth_balance >= crypto_amount:
             self.eth_balance -= crypto_amount
             self.xeur_balance += amount_in_eur
+            # Add conversion transaction
+            self.add_transaction(
+                crypto_type=crypto_type,
+                crypto_amount=crypto_amount,
+                eur_amount=amount_in_eur,
+                recipient="Internal Conversion",
+                status="CRYPTO_TO_xEUR"
+            )
+            return True
+        return False
+
+    def withdraw_xeur(self, amount: float, recipient: str) -> bool:
+        """Withdraw xEUR for payment"""
+        if self.xeur_balance >= amount:
+            self.xeur_balance -= amount
+            # Add withdrawal transaction
+            self.add_transaction(
+                crypto_type="xEUR",
+                crypto_amount=amount,
+                eur_amount=amount,
+                recipient=recipient,
+                status="xEUR_WITHDRAWAL"
+            )
+            self.save_user_data()
             return True
         return False
 
