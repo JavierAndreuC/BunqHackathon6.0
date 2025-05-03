@@ -4,6 +4,8 @@ import plotly.express as px
 from datetime import datetime
 import sys
 import os
+import time
+import json
 
 # Add backend to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
@@ -19,6 +21,12 @@ if 'test_account' not in st.session_state:
     st.session_state.test_account = None
 if 'account_balance' not in st.session_state:
     st.session_state.account_balance = 0.0
+if 'last_transaction' not in st.session_state:
+    st.session_state.last_transaction = None
+if 'balance_updates' not in st.session_state:
+    st.session_state.balance_updates = []
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = False
 
 # Mock conversion rates (in a real app, these would come from an exchange)
 CONVERSION_RATES = {
@@ -26,8 +34,47 @@ CONVERSION_RATES = {
     'ETH': 2000    # 1 ETH = 2,000 EUR
 }
 
+def get_fiat_value(crypto_type: str, amount: float) -> float:
+    """Calculate fiat value of crypto"""
+    return amount * CONVERSION_RATES[crypto_type]
+
+def format_balance(amount: float, crypto_type: str) -> str:
+    """Format balance with fiat value"""
+    fiat_value = get_fiat_value(crypto_type, amount)
+    return f"{amount:.6f} {crypto_type} (≈€{fiat_value:,.2f})"
+
+def format_currency(amount: float) -> str:
+    """Format amount as currency"""
+    return f"€{amount:,.2f}"
+
+def add_balance_update(crypto_type: str, amount: float, is_positive: bool):
+    """Add a balance update to show in the UI"""
+    st.session_state.balance_updates.append({
+        'type': crypto_type,
+        'amount': amount,
+        'is_positive': is_positive,
+        'timestamp': time.time()
+    })
+
 # Streamlit UI
-st.title("Crypto Payment Simulator")
+st.set_page_config(layout="wide", page_title="Crypto Payment Simulator")
+
+# Dark mode toggle
+col1, col2 = st.columns([1, 0.1])
+with col1:
+    st.title("Crypto Payment Simulator")
+with col2:
+    dark_mode = st.toggle("🌙", key="dark_mode")
+    if dark_mode:
+        st.markdown("""
+        <style>
+        .stApp {
+            background-color: #1E1E1E;
+            color: #FFFFFF;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
 st.write("Convert and pay with crypto through Bunq")
 
 # Setup section
@@ -45,181 +92,275 @@ if st.session_state.wallet is None:
             st.rerun()
 
 if st.session_state.wallet is not None:
-    # Display account balance and money management
-    st.header("Account Management")
-    current_balance = st.session_state.bunq_api.get_balance()
-    st.session_state.account_balance = current_balance
-    st.metric("Current Balance", f"€{current_balance:.2f}")
-    
-    # Check for pending requests
-    pending_requests = st.session_state.bunq_api.get_pending_requests()
-    if pending_requests:
-        st.subheader("Pending Money Requests")
-        for req in pending_requests:
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"Request for €{float(req.amount_inquired.value):.2f} from {req.counterparty_alias.value}")
-            with col2:
-                if st.button(f"Accept €{float(req.amount_inquired.value):.2f}", key=f"accept_{req.id_}"):
-                    if st.session_state.bunq_api.accept_request(req.id_):
-                        st.success("Request accepted!")
-                        time.sleep(2)
-                        st.rerun()
-    
-    if current_balance < 10.0:  # If balance is too low for testing
-        st.warning("Your account balance is low. Request some test money from Sugar Daddy!")
-        if st.button("Request €500 from Sugar Daddy"):
-            if st.session_state.bunq_api.request_money():
-                time.sleep(2)  # Wait a bit for the request to process
-                st.rerun()
+    # Create tabs for different views
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "💸 Make Payment", "✅ Transaction History"])
 
-    # Display crypto balances
-    st.header("Wallet Balances")
-    balances = st.session_state.wallet.get_balances()
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("BTC Balance", f"{balances['BTC']:.6f} BTC")
-    with col2:
-        st.metric("ETH Balance", f"{balances['ETH']:.6f} ETH")
-    with col3:
-        st.metric("xEUR Balance", f"€{balances['xEUR']:.2f}")
+    with tab1:
+        st.header("Wallet Overview")
+        
+        # Display balances in a grid with animations
+        col1, col2, col3 = st.columns(3)
+        balances = st.session_state.wallet.get_balances()
+        
+        with col1:
+            st.metric(
+                "BTC Balance",
+                format_balance(balances['BTC'], 'BTC'),
+                help="Bitcoin balance with approximate EUR value"
+            )
+            # BTC Recent Changes
+            with st.expander("Recent BTC Changes", expanded=False):
+                btc_changes = [update for update in st.session_state.balance_updates if update['type'] == 'BTC']
+                if btc_changes:
+                    for change in btc_changes[-5:]:  # Show last 5 changes
+                        st.write(f"{'+' if change['is_positive'] else '-'}{change['amount']:.6f} BTC")
+                else:
+                    st.write("No recent changes")
+        
+        with col2:
+            st.metric(
+                "ETH Balance",
+                format_balance(balances['ETH'], 'ETH'),
+                help="Ethereum balance with approximate EUR value"
+            )
+            # ETH Recent Changes
+            with st.expander("Recent ETH Changes", expanded=False):
+                eth_changes = [update for update in st.session_state.balance_updates if update['type'] == 'ETH']
+                if eth_changes:
+                    for change in eth_changes[-5:]:  # Show last 5 changes
+                        st.write(f"{'+' if change['is_positive'] else '-'}{change['amount']:.6f} ETH")
+                else:
+                    st.write("No recent changes")
+        
+        with col3:
+            st.metric(
+                "xEUR Balance",
+                f"€{balances['xEUR']:.2f}",
+                help="Stablecoin balance for payments"
+            )
+            # xEUR Recent Changes
+            with st.expander("Recent xEUR Changes", expanded=False):
+                xeur_changes = [update for update in st.session_state.balance_updates if update['type'] == 'xEUR']
+                if xeur_changes:
+                    for change in xeur_changes[-5:]:  # Show last 5 changes
+                        st.write(f"{'+' if change['is_positive'] else '-'}{format_currency(change['amount'])}")
+                else:
+                    st.write("No recent changes")
 
-    # Payment form
-    st.header("Make a Payment")
-    st.write("""
-    ### Payment Flow:
-    1. Select crypto and amount to spend
-    2. System automatically converts crypto to xEUR
-    3. xEUR is used to make the payment
-    4. Payment is sent to merchant's IBAN
-    """)
-    
-    crypto_type = st.selectbox("Select Crypto", ["BTC", "ETH"])
-    
-    # Show current conversion rate
-    st.write(f"Current rate: 1 {crypto_type} = €{CONVERSION_RATES[crypto_type]:,.2f}")
-    
-    # Input crypto amount
-    crypto_amount = st.number_input(
-        f"Amount in {crypto_type}",
-        min_value=0.000001,
-        max_value=balances[crypto_type],
-        step=0.000001,
-        format="%.6f"
-    )
-    
-    # Calculate EUR value
-    eur_value = crypto_amount * CONVERSION_RATES[crypto_type]
-    st.write(f"This equals: €{eur_value:.2f}")
-    
-    # Payment details
-    st.subheader("Payment Details")
-    merchant_iban = st.text_input("Merchant IBAN", value=st.session_state.test_account.alias[0].value)
-    merchant_name = st.text_input("Merchant Name", value="Test Merchant")
-    
-    if st.button("Convert and Pay"):
-        # Show payment flow steps
-        st.write("### Payment Process:")
+    with tab2:
+        st.header("Make a Payment")
         
-        # Step 1: Show crypto balance before conversion
-        st.write("1. Current balances before conversion:")
-        balances_before = st.session_state.wallet.get_balances()
-        st.write(f"- {crypto_type}: {balances_before[crypto_type]:.6f}")
-        st.write(f"- xEUR: €{balances_before['xEUR']:.2f}")
+        # Payment form
+        col1, col2 = st.columns([1, 2])
         
-        # Step 2: Convert crypto to xEUR
-        st.write("2. Converting crypto to xEUR...")
-        if st.session_state.wallet.convert_crypto_to_xeur(crypto_type, eur_value):
-            # Record the crypto to xEUR conversion
-            st.session_state.wallet.add_transaction(
-                crypto_type=crypto_type,
-                crypto_amount=crypto_amount,
-                eur_amount=eur_value,
-                recipient="Bunq Internal",
-                status="CRYPTO_TO_xEUR"
+        with col1:
+            crypto_type = st.selectbox(
+                "Select Crypto",
+                ["BTC", "ETH"],
+                help="Choose which cryptocurrency to spend"
             )
             
-            # Show intermediate balances
-            st.write("3. Balances after conversion:")
-            balances_after = st.session_state.wallet.get_balances()
-            st.write(f"- {crypto_type}: {balances_after[crypto_type]:.6f}")
-            st.write(f"- xEUR: €{balances_after['xEUR']:.2f}")
+            # Show current balance and max spendable
+            current_balance = balances[crypto_type]
+            max_eur = get_fiat_value(crypto_type, current_balance)
+            st.write(f"Available: {format_balance(current_balance, crypto_type)}")
+            st.write(f"Max spendable: €{max_eur:,.2f}")
+        
+        with col2:
+            # Input EUR amount with auto-conversion to crypto
+            eur_amount = st.number_input(
+                "Amount in EUR",
+                min_value=0.01,
+                max_value=get_fiat_value(crypto_type, current_balance),
+                step=0.01,
+                format="%.2f",
+                value=1.00,  # Set default value to 1
+                help="Enter the amount in EUR to spend"
+            )
             
-            # Step 3: Make payment
-            st.write("4. Sending payment to merchant...")
-            if st.session_state.bunq_api.make_payment(
-                eur_value,
-                merchant_iban,
-                merchant_name
-            ):
-                # Record the final merchant payment
-                st.session_state.wallet.add_transaction(
-                    crypto_type="xEUR",
-                    crypto_amount=eur_value,
-                    eur_amount=eur_value,
-                    recipient=merchant_iban,
-                    status="MERCHANT_PAYMENT"
-                )
+            # Show conversion rate and BTC value
+            crypto_amount = eur_amount / CONVERSION_RATES[crypto_type]
+            st.write(f"Conversion rate: 1 {crypto_type} = €{CONVERSION_RATES[crypto_type]:,.2f}")
+            st.write(f"Total: {crypto_amount:.6f} {crypto_type}")
+        
+        # Payment details
+        st.subheader("Payment Details")
+        merchant_iban = st.text_input(
+            "Merchant IBAN",
+            value=st.session_state.test_account.alias[0].value,
+            help="Enter the merchant's IBAN"
+        )
+        merchant_name = st.text_input(
+            "Merchant Name",
+            value="Test Merchant",
+            help="Enter the merchant's name"
+        )
+        
+        # Visual preview card
+        st.subheader("Payment Preview")
+        st.info(f"""
+        You are about to spend {crypto_amount:.6f} {crypto_type} (€{eur_amount:.2f}) to send {format_currency(eur_amount)} to {merchant_name} (IBAN: {merchant_iban})
+        """)
+        
+        # Convert and Pay button
+        if st.button("Convert and Pay", type="primary"):
+            with st.spinner("Processing payment..."):
+                # Disable form
+                st.session_state.form_disabled = True
                 
-                st.success(f"""
-                ### Payment Successful!
-                Transaction Flow:
-                1. Spent: {crypto_amount:.6f} {crypto_type}
-                2. Converted to: €{eur_value:.2f} xEUR
-                3. xEUR debited by Bunq
-                4. Sent to: {merchant_name} ({merchant_iban})
-                """)
-                st.rerun()
-        else:
-            st.error("Insufficient crypto balance")
-
-    # Transaction history with improved visualization
-    st.header("Transaction History")
-    transactions = st.session_state.wallet.get_transaction_history()
-    if transactions:
-        df = pd.DataFrame(transactions)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
-        # Format the transaction display
-        st.subheader("Recent Transactions")
-        for _, tx in df.sort_values('timestamp', ascending=False).head(5).iterrows():
-            with st.expander(f"Transaction on {tx['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}"):
-                if tx['status'] == "CRYPTO_TO_xEUR":
-                    st.write("**Conversion Process:**")
-                    st.write(f"- Converted {tx['crypto_amount']:.6f} {tx['crypto_type']} to €{tx['eur_amount']:.2f} xEUR")
-                    st.write("- Processed by Bunq internal conversion")
-                elif tx['status'] == "xEUR_DEBIT":
-                    st.write("**xEUR Processing:**")
-                    st.write(f"- Bunq debited €{tx['eur_amount']:.2f} xEUR")
-                    st.write("- Preparing for merchant payment")
-                elif tx['status'] == "MERCHANT_PAYMENT":
-                    st.write("**Merchant Payment:**")
-                    st.write(f"- Sent €{tx['eur_amount']:.2f} to {tx['recipient']}")
-                    st.write("- Payment completed")
+                # Step 1: Show crypto balance before conversion
+                st.write("### Payment Process:")
+                st.write("1. Current balances before conversion:")
+                balances_before = st.session_state.wallet.get_balances()
+                st.write(f"- {crypto_type}: {balances_before[crypto_type]:.6f}")
+                st.write(f"- xEUR: {format_currency(balances_before['xEUR'])}")
+                
+                # Step 2: Convert crypto to xEUR
+                st.write("2. Converting crypto to xEUR...")
+                if st.session_state.wallet.convert_crypto_to_xeur(crypto_type, eur_amount):
+                    add_balance_update(crypto_type, -crypto_amount, False)
+                    add_balance_update('xEUR', eur_amount, True)
+                    
+                    # Show intermediate balances
+                    st.write("3. Balances after conversion:")
+                    balances_after_conversion = st.session_state.wallet.get_balances()
+                    st.write(f"- {crypto_type}: {balances_after_conversion[crypto_type]:.6f}")
+                    st.write(f"- xEUR: {format_currency(balances_after_conversion['xEUR'])}")
+                    
+                    # Step 3: Withdraw xEUR for payment
+                    st.write("4. Withdrawing xEUR for payment...")
+                    if st.session_state.wallet.withdraw_xeur(eur_amount, merchant_iban):
+                        add_balance_update('xEUR', -eur_amount, False)
+                        
+                        # Show balances after withdrawal
+                        st.write("5. Balances after xEUR withdrawal:")
+                        balances_after_withdrawal = st.session_state.wallet.get_balances()
+                        st.write(f"- xEUR: {format_currency(balances_after_withdrawal['xEUR'])}")
+                        
+                        # Step 4: Make payment
+                        st.write("6. Sending payment to merchant...")
+                        if st.session_state.bunq_api.make_payment(
+                            eur_amount,
+                            merchant_iban,
+                            merchant_name
+                        ):
+                            # Store last transaction for confirmation view
+                            st.session_state.last_transaction = {
+                                'crypto_type': crypto_type,
+                                'crypto_amount': crypto_amount,
+                                'eur_value': eur_amount,
+                                'merchant_name': merchant_name,
+                                'merchant_iban': merchant_iban
+                            }
+                            
+                            st.success(f"""
+                            ✅ Payment Successful!
+                            
+                            You paid {format_currency(eur_amount)} using {crypto_amount:.6f} {crypto_type}
+                            
+                            Recipient: {merchant_name} ({merchant_iban})
+                            """)
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("Payment to merchant failed")
+                    else:
+                        st.error("Failed to withdraw xEUR")
                 else:
-                    st.write("**Transaction Details:**")
-                    st.write(f"- Type: {tx['crypto_type']}")
-                    st.write(f"- Amount: {tx['crypto_amount']:.6f}")
-                    st.write(f"- EUR Value: €{tx['eur_amount']:.2f}")
-                    st.write(f"- Recipient: {tx['recipient']}")
-                    st.write(f"- Status: {tx['status']}")
-        
-        # Full transaction table
-        st.subheader("All Transactions")
-        st.dataframe(df)
-        
-        # Plot spending trends
-        st.subheader("Spending Trends")
-        df['date'] = df['timestamp'].dt.date
-        daily_spending = df.groupby('date')['eur_amount'].sum().reset_index()
-        fig = px.line(daily_spending, x='date', y='eur_amount', 
-                     title='Daily Spending in EUR')
-        st.plotly_chart(fig)
-    else:
-        st.info("No transactions yet")
+                    st.error("Insufficient crypto balance")
 
-    # Reset button
-    if st.button("Reset Balances"):
-        st.session_state.wallet.reset_balances()
-        st.success("Balances reset to default values")
-        st.rerun() 
+    with tab3:
+        st.header("Transaction History")
+        
+        # Show last transaction if available
+        if st.session_state.last_transaction:
+            tx = st.session_state.last_transaction
+            st.success(f"""
+            ### Last Transaction
+            - Spent: {tx['crypto_amount']:.6f} {tx['crypto_type']}
+            - Value: {format_currency(tx['eur_value'])}
+            - To: {tx['merchant_name']} ({tx['merchant_iban']})
+            """)
+        
+        # Transaction history
+        transactions = st.session_state.wallet.get_transaction_history()
+        if transactions:
+            df = pd.DataFrame(transactions)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            
+            # Group transactions by timestamp
+            grouped_transactions = {}
+            for _, tx in df.sort_values('timestamp', ascending=False).iterrows():
+                timestamp = tx['timestamp'].strftime('%Y-%m-%d %H:%M')
+                if timestamp not in grouped_transactions:
+                    grouped_transactions[timestamp] = []
+                grouped_transactions[timestamp].append(tx)
+            
+            # Display grouped transactions
+            st.subheader("Recent Transactions")
+            for timestamp, tx_group in grouped_transactions.items():
+                # Find the main transaction (usually the payment)
+                main_tx = next((tx for tx in tx_group if tx['status'] == "MERCHANT_PAYMENT"), tx_group[0])
+                conversion_tx = next((tx for tx in tx_group if tx['status'] == "CRYPTO_TO_xEUR"), None)
+                
+                # Create expander with improved summary
+                with st.expander(f"🟢 Paid {format_currency(main_tx['eur_amount'])} to {main_tx.get('recipient', 'Test Merchant')} using {conversion_tx['crypto_amount']:.6f} {conversion_tx['crypto_type']} — {timestamp}"):
+                    # Transaction flow in a card
+                    with st.container():
+                        st.markdown("### 🔁 Flow")
+                        flow_text = f"""
+                        <div style='text-align: center; font-size: 1.2em; padding: 10px; background-color: #f0f2f6; border-radius: 5px;'>
+                            🪙 {conversion_tx['crypto_amount']:.6f} {conversion_tx['crypto_type']} ➝ 💶 {format_currency(conversion_tx['eur_amount'])} xEUR ➝ 🏦 {format_currency(conversion_tx['eur_amount'])} via Bunq ➝ {main_tx.get('recipient', 'Test Merchant')}
+                        </div>
+                        """
+                        st.markdown(flow_text, unsafe_allow_html=True)
+                    
+                    # Steps in a timeline format
+                    with st.container():
+                        st.markdown("### 📋 Steps")
+                        steps = []
+                        for tx in sorted(tx_group, key=lambda x: x['timestamp']):
+                            if tx['status'] == "CRYPTO_TO_xEUR":
+                                steps.append(f"1. ↪️ Converted {tx['crypto_amount']:.6f} {tx['crypto_type']} → {format_currency(tx['eur_amount'])} xEUR")
+                            elif tx['status'] == "xEUR_WITHDRAWAL":
+                                steps.append(f"2. 📤 Withdrew {format_currency(tx['eur_amount'])} xEUR")
+                            elif tx['status'] == "MERCHANT_PAYMENT":
+                                steps.append(f"3. 🏦 Debited {format_currency(tx['eur_amount'])} from Bunq account and sent to {tx.get('recipient', 'Test Merchant')}")
+                        
+                        for step in steps:
+                            st.markdown(step)
+                    
+                    # Status section in a card
+                    with st.container():
+                        st.markdown("### ✅ Status")
+                        status_text = f"""
+                        <div style='padding: 10px; background-color: #f0f2f6; border-radius: 5px;'>
+                            <p style='margin: 0;'><strong>Status:</strong> ✅ Completed</p>
+                            <p style='margin: 0;'><strong>Method:</strong> 🔧 Internal conversion + Bunq API</p>
+                        </div>
+                        """
+                        st.markdown(status_text, unsafe_allow_html=True)
+                        
+                        # Add Bunq Transfer section
+                        st.markdown("### 🏦 Bunq Transfer")
+                        bunq_tx = next((tx for tx in tx_group if tx['status'] == "MERCHANT_PAYMENT"), None)
+                        if bunq_tx is not None:
+                            bunq_text = f"""
+                            <div style='padding: 10px; background-color: #f0f2f6; border-radius: 5px;'>
+                                <p style='margin: 0;'><strong>Debited:</strong> {format_currency(bunq_tx['eur_amount'])} from platform Bunq account</p>
+                                <p style='margin: 0;'><strong>Sent to:</strong> IBAN: {bunq_tx.get('recipient', 'Test Merchant')}</p>
+                                <p style='margin: 0;'><strong>Reference:</strong> "Crypto payment via xEUR"</p>
+                            </div>
+                            """
+                            st.markdown(bunq_text, unsafe_allow_html=True)
+            
+            # Remove the full transaction table and spending trends
+            # ... existing code ...
+        else:
+            st.info("No transactions yet")
+
+        # Reset button
+        if st.button("Reset Balances"):
+            st.session_state.wallet.reset_balances()
+            st.success("Balances reset to default values")
+            st.rerun() 
