@@ -1,0 +1,31 @@
+{
+  "btc_balance": 0.011899000000000002,
+  "eth_balance": 0.497,
+  "xeur_balance": 60.04,
+  "transactions": [
+    {
+      "timestamp": "2025-05-02T23:55:29.759297",
+      "crypto_type": "BTC",
+      "crypto_amount": 0.0001,
+      "eur_amount": 4.0,
+      "recipient": "NL86BUNQ2090665610",
+      "status": "COMPLETED"
+    },
+    {
+      "timestamp": "2025-05-02T23:55:58.578385",
+      "crypto_type": "BTC",
+      "crypto_amount": 1e-06,
+      "eur_amount": 0.04,
+      "recipient": "NL86BUNQ2090665610",
+      "status": "COMPLETED"
+    },
+    {
+      "timestamp": "2025-05-02T23:56:24.443006",
+      "crypto_type": "ETH",
+      "crypto_amount": 0.003,
+      "eur_amount": 6.0,
+      "recipient": "NL86BUNQ2090665610",
+      "status": "COMPLETED"
+    }
+  ]
+}
