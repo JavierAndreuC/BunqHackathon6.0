@@ -11,6 +11,7 @@ import json
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from wallet import CryptoWallet
 from bunq_api import BunqAPI
+from fetch_conversion_rate import fetch_rate
 
 # Initialize session state
 if 'wallet' not in st.session_state:
@@ -27,16 +28,27 @@ if 'balance_updates' not in st.session_state:
     st.session_state.balance_updates = []
 if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = False
+if 'conversion_rates' not in st.session_state:
+    st.session_state.conversion_rates = {}
 
-# Mock conversion rates (in a real app, these would come from an exchange)
-CONVERSION_RATES = {
-    'BTC': 40000,  # 1 BTC = 40,000 EUR
-    'ETH': 2000    # 1 ETH = 2,000 EUR
-}
+def get_conversion_rate(crypto_type: str) -> float:
+    """Get the current conversion rate for a cryptocurrency"""
+    try:
+        if crypto_type not in st.session_state.conversion_rates:
+            st.session_state.conversion_rates[crypto_type] = fetch_rate(crypto_type, "EUR")
+        return st.session_state.conversion_rates[crypto_type]
+    except Exception as e:
+        st.error(f"Error fetching conversion rate: {e}")
+        # Fallback to mock rates if API fails
+        return {
+            'BTC': 40000,
+            'ETH': 2000
+        }[crypto_type]
 
 def get_fiat_value(crypto_type: str, amount: float) -> float:
     """Calculate fiat value of crypto"""
-    return amount * CONVERSION_RATES[crypto_type]
+    rate = get_conversion_rate(crypto_type)
+    return amount * rate
 
 def format_balance(amount: float, crypto_type: str) -> str:
     """Format balance with fiat value"""
@@ -179,8 +191,12 @@ if st.session_state.wallet is not None:
             )
             
             # Show conversion rate and BTC value
-            crypto_amount = eur_amount / CONVERSION_RATES[crypto_type]
-            st.write(f"Conversion rate: 1 {crypto_type} = €{CONVERSION_RATES[crypto_type]:,.2f}")
+            rate = get_conversion_rate(crypto_type)
+            crypto_amount = eur_amount / rate
+            st.markdown(f"""
+            ### Current Rate
+            **1 {crypto_type} = €{rate:,.2f}**
+            """)
             st.write(f"Total: {crypto_amount:.6f} {crypto_type}")
         
         # Payment details

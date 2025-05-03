@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
+from fetch_conversion_rate import fetch_rate
 
 class Transaction:
     def __init__(self, timestamp: str, crypto_type: str, crypto_amount: float, 
@@ -57,41 +58,52 @@ class CryptoWallet:
         with open(f"user_{self.user_id}.json", "w") as f:
             json.dump(data, f, indent=2)
 
+    def get_conversion_rate(self, crypto_type: str) -> float:
+        """Get the current conversion rate for a cryptocurrency"""
+        try:
+            return fetch_rate(crypto_type, "EUR")
+        except Exception as e:
+            print(f"Error fetching conversion rate: {e}")
+            # Fallback to mock rates if API fails
+            return {
+                'BTC': 40000,
+                'ETH': 2000
+            }[crypto_type]
+
     def convert_crypto_to_xeur(self, crypto_type: str, amount_in_eur: float) -> bool:
-        """Convert crypto to xEUR"""
-        # Mock conversion rates
-        rates = {
-            'BTC': 40000,  # 1 BTC = 40,000 EUR
-            'ETH': 2000    # 1 ETH = 2,000 EUR
-        }
-        
-        crypto_amount = amount_in_eur / rates[crypto_type]
-        
-        if crypto_type == 'BTC' and self.btc_balance >= crypto_amount:
-            self.btc_balance -= crypto_amount
-            self.xeur_balance += amount_in_eur
-            # Add conversion transaction
-            self.add_transaction(
-                crypto_type=crypto_type,
-                crypto_amount=crypto_amount,
-                eur_amount=amount_in_eur,
-                recipient="Internal Conversion",
-                status="CRYPTO_TO_xEUR"
-            )
-            return True
-        elif crypto_type == 'ETH' and self.eth_balance >= crypto_amount:
-            self.eth_balance -= crypto_amount
-            self.xeur_balance += amount_in_eur
-            # Add conversion transaction
-            self.add_transaction(
-                crypto_type=crypto_type,
-                crypto_amount=crypto_amount,
-                eur_amount=amount_in_eur,
-                recipient="Internal Conversion",
-                status="CRYPTO_TO_xEUR"
-            )
-            return True
-        return False
+        """Convert crypto to xEUR using live rates"""
+        try:
+            rate = self.get_conversion_rate(crypto_type)
+            crypto_amount = amount_in_eur / rate
+            
+            if crypto_type == 'BTC' and self.btc_balance >= crypto_amount:
+                self.btc_balance -= crypto_amount
+                self.xeur_balance += amount_in_eur
+                # Add conversion transaction
+                self.add_transaction(
+                    crypto_type=crypto_type,
+                    crypto_amount=crypto_amount,
+                    eur_amount=amount_in_eur,
+                    recipient="Internal Conversion",
+                    status="CRYPTO_TO_xEUR"
+                )
+                return True
+            elif crypto_type == 'ETH' and self.eth_balance >= crypto_amount:
+                self.eth_balance -= crypto_amount
+                self.xeur_balance += amount_in_eur
+                # Add conversion transaction
+                self.add_transaction(
+                    crypto_type=crypto_type,
+                    crypto_amount=crypto_amount,
+                    eur_amount=amount_in_eur,
+                    recipient="Internal Conversion",
+                    status="CRYPTO_TO_xEUR"
+                )
+                return True
+            return False
+        except Exception as e:
+            print(f"Error in conversion: {e}")
+            return False
 
     def withdraw_xeur(self, amount: float, recipient: str) -> bool:
         """Withdraw xEUR for payment"""
